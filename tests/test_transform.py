@@ -60,3 +60,14 @@ def test_rotate_resize_and_order_zero(uint_image):
         uint_image, 31, resize=True, order=0, preserve_range=True
     )
     assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("shape", [(511, 513), (513, 515)])
+def test_rotate_parallel_threshold_and_odd_tail(rng, shape):
+    image = np.ascontiguousarray(rng.normal(size=shape))
+    assert_allclose(
+        transform.rotate(image, 13.5),
+        reference.rotate(image, 13.5),
+        rtol=1e-12,
+        atol=1e-12,
+    )

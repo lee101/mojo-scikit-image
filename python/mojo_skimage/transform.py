@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from ._lib import addr, lib
+from ._lib import addr, lib, parallel_rows
 from ._shared import float_output_dtype, img_as_float, mode_code, require_2d
 from .filters import gaussian
 
@@ -144,9 +144,12 @@ def rotate(
         [cosine, -sine, tx, sine, cosine, ty], dtype=np.float64
     )
     result = np.empty((int(dh), int(dw)), dtype=np.float64)
-    lib().msi_warp_affine(
-        addr(source), addr(result), addr(matrix), *source.shape, *result.shape,
-        interpolation, _transform_mode_code(mode), float(cval),
+    parallel_rows(
+        *result.shape,
+        lambda y0, y1, _task: lib().msi_warp_affine(
+            addr(source), addr(result), addr(matrix), *source.shape, *result.shape,
+            interpolation, _transform_mode_code(mode), float(cval), y0, y1,
+        ),
     )
     if clip:
         lower = min(float(source.min()), float(cval)) if mode == "constant" else float(source.min())

@@ -79,10 +79,32 @@ def test_median_even_footprint_and_out(uint_image):
     assert_array_equal(target, reference.median(uint_image, footprint))
 
 
+def test_median_float_values(float_image):
+    footprint = np.array(
+        [[0, 1, 1, 0], [1, 1, 1, 1], [0, 1, 1, 0]], dtype=np.uint8
+    )
+    assert_array_equal(
+        filters.median(float_image, footprint),
+        reference.median(float_image, footprint),
+    )
+
+
 def test_median_rejects_inexact_integer_conversion():
     image = np.array([[0, 2**53 + 1]], dtype=np.uint64)
     with pytest.raises(OverflowError, match="exactly representable"):
         filters.median(image, np.ones((1, 1), dtype=np.uint8))
+
+
+@pytest.mark.parametrize("shape", [(511, 513), (513, 515)])
+def test_median_parallel_threshold_and_odd_tail(rng, shape):
+    image = rng.integers(0, 256, size=shape, dtype=np.uint8)
+    footprint = np.array(
+        [[0, 1, 1, 0], [1, 1, 1, 1], [0, 1, 1, 0]], dtype=np.uint8
+    )
+    assert_array_equal(
+        filters.median(image, footprint),
+        reference.median(image, footprint),
+    )
 
 
 @pytest.mark.parametrize("dtype", [np.uint8, np.int16, np.float64])

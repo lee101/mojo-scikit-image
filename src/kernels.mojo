@@ -73,6 +73,8 @@ def msi_convolve_axis(
     axis: Int,
     mode: Int,
     cval: Float64,
+    y_start: Int,
+    y_stop: Int,
 ) abi("C"):
     var src = fp(src_addr)
     var dst = fp(dst_addr)
@@ -122,21 +124,8 @@ def msi_convolve_axis(
             dst[y * w + x] = acc
             x += 1
 
-    if h * w < PARALLEL_THRESHOLD or h == 1:
-        for y in range(h):
-            row(y)
-    else:
-        var tasks = min(h, MAX_ROW_TASKS)
-
-        @parameter
-        def rows(task: Int):
-            var start = task * h // tasks
-            var end = (task + 1) * h // tasks
-            for y in range(start, end):
-                row(y)
-
-        for task in range(tasks):
-            rows(task)
+    for y in range(y_start, y_stop):
+        row(y)
 
 
 def sobel_value(
@@ -339,28 +328,42 @@ def msi_median(
     count: Int,
     mode: Int,
     cval: Float64,
+    y_start: Int,
+    y_stop: Int,
 ) abi("C"):
     var src = fp(src_addr)
     var dst = fp(dst_addr)
     var footprint = bp(footprint_addr)
-    var scratch = fp(scratch_addr)
+    var scratch_base = fp(scratch_addr)
     var ry = fh // 2
     var rx = fw // 2
-    for y in range(h):
+    var middle = count // 2
+
+    var scratch = scratch_base
+    for y in range(y_start, y_stop):
         for x in range(w):
-            var n = 0
+            var kept = 0
             for ky in range(fh):
                 for kx in range(fw):
                     if footprint[ky * fw + kx] == 0:
                         continue
-                    var value = sample(src, y + ky - ry, x + kx - rx, h, w, mode, cval)
-                    var j = n
-                    while j > 0 and scratch[j - 1] > value:
-                        scratch[j] = scratch[j - 1]
-                        j -= 1
-                    scratch[j] = value
-                    n += 1
-            dst[y * w + x] = scratch[count // 2]
+                    var value = sample(
+                        src, y + ky - ry, x + kx - rx, h, w, mode, cval
+                    )
+                    if kept <= middle:
+                        var j = kept
+                        while j > 0 and scratch[j - 1] > value:
+                            scratch[j] = scratch[j - 1]
+                            j -= 1
+                        scratch[j] = value
+                        kept += 1
+                    elif value < scratch[middle]:
+                        var j = middle
+                        while j > 0 and scratch[j - 1] > value:
+                            scratch[j] = scratch[j - 1]
+                            j -= 1
+                        scratch[j] = value
+            dst[y * w + x] = scratch[middle]
 
 
 @export("msi_morph")
@@ -616,15 +619,21 @@ def msi_warp_affine(
     order: Int,
     mode: Int,
     cval: Float64,
+    y_start: Int,
+    y_stop: Int,
 ) abi("C"):
     var src = fp(src_addr)
     var dst = fp(dst_addr)
     var matrix = fp(matrix_addr)
-    for y in range(dh):
+    @parameter
+    def row(y: Int):
         for x in range(dw):
             var sx = matrix[0] * Float64(x) + matrix[1] * Float64(y) + matrix[2]
             var sy = matrix[3] * Float64(x) + matrix[4] * Float64(y) + matrix[5]
             dst[y * dw + x] = interpolate(src, sy, sx, sh, sw, order, mode, cval)
+
+    for y in range(y_start, y_stop):
+        row(y)
 
 
 @export("msi_otsu")
@@ -675,6 +684,74 @@ def msi_flood(
     var stack = ip(stack_addr)
     var footprint = bp(footprint_addr)
     var target = image[sy * w + sx]
+    comptime W = simd_width_of[DType.float64]()
+    var four_connected = (
+        fh == 3
+        and fw == 3
+        and footprint[0] == 0
+        and footprint[1] != 0
+        and footprint[2] == 0
+        and footprint[3] != 0
+        and footprint[4] != 0
+        and footprint[5] != 0
+        and footprint[6] == 0
+        and footprint[7] != 0
+        and footprint[8] == 0
+    )
+    if four_connected:
+        var top = 1
+        var found = 0
+        stack[0] = Int64(sy * w + sx)
+        result[sy * w + sx] = 2
+        while top > 0:
+            top -= 1
+            var pos = Int(stack[top])
+            if result[pos] == 1:
+                continue
+            var y = pos // w
+            var x = pos - y * w
+            var left = x
+            while left > 0:
+                var q = y * w + left - 1
+                if result[q] == 1 or abs(image[q] - target) > tolerance:
+                    break
+                left -= 1
+            var right = x
+            while right + 1 < w:
+                var q = y * w + right + 1
+                if result[q] == 1 or abs(image[q] - target) > tolerance:
+                    break
+                right += 1
+            var q = y * w + left
+            var q_stop = y * w + right + 1
+            while q + W <= q_stop:
+                result.store(q, SIMD[DType.uint8, W](1))
+                q += W
+                found += W
+            while q < q_stop:
+                result[q] = 1
+                q += 1
+                found += 1
+            for direction in range(2):
+                var yy = y - 1 if direction == 0 else y + 1
+                if yy < 0 or yy >= h:
+                    continue
+                var xx = left
+                while xx <= right:
+                    var q = yy * w + xx
+                    if result[q] == 0 and abs(image[q] - target) <= tolerance:
+                        stack[top] = Int64(q)
+                        top += 1
+                        result[q] = 2
+                        xx += 1
+                        while xx <= right:
+                            q = yy * w + xx
+                            if result[q] == 1 or abs(image[q] - target) > tolerance:
+                                break
+                            xx += 1
+                    else:
+                        xx += 1
+        return found
     var top = 1
     var found = 0
     stack[0] = Int64(sy * w + sx)

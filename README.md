@@ -81,23 +81,29 @@ Machine: Intel(R) Xeon(R) CPU E5-2697 v4 @ 2.30GHz; Linux x86_64; Python 3.13.14
 
 | operation | Mojo (ms) | scikit-image (ms) | speedup |
 |---|---:|---:|---:|
-| gaussian sigma=2 (2048x2048) | 40.39 | 175.25 | 4.34x |
-| sobel magnitude (2048x2048) | 16.26 | 279.47 | 17.18x |
-| median disk(2) (1024x1024) | 314.26 | 280.73 | 0.89x |
-| grayscale dilation disk(5) (1024x1024) | 23.45 | 124.13 | 5.29x |
-| binary opening disk(2) (1024x1024) | 16.16 | 59.17 | 3.66x |
-| resize bilinear (2048x2048 -> 1536x1536) | 40.12 | 83.31 | 2.08x |
-| rotate 17 degrees (1024x1024) | 33.16 | 37.09 | 1.12x |
-| find_boundaries (1536x1536) | 13.34 | 84.41 | 6.33x |
-| flood uniform region (1536x1536) | 70.75 | 49.95 | 0.71x |
+| gaussian sigma=2 (2048x2048) | 19.15 | 117.60 | 6.14x |
+| sobel magnitude (2048x2048) | 24.74 | 209.17 | 8.45x |
+| median disk(2) (1024x1024) | 55.32 | 282.32 | 5.10x |
+| grayscale dilation disk(5) (1024x1024) | 96.93 | 135.59 | 1.40x |
+| binary opening disk(2) (1024x1024) | 9.40 | 54.27 | 5.77x |
+| resize bilinear (2048x2048 -> 1536x1536) | 39.18 | 79.33 | 2.02x |
+| rotate 17 degrees (1024x1024) | 8.10 | 23.11 | 2.85x |
+| find_boundaries (1536x1536) | 8.78 | 63.41 | 7.22x |
+| flood uniform region (1536x1536) | 5.35 | 38.49 | 7.20x |
 
-Gaussian, Sobel, grayscale dilation, binary opening, and boundary detection use
-SIMD interiors with scalar border and remainder handling. Large images are split
-into independent row blocks, while smaller inputs stay serial to avoid
-thread-launch overhead. Binary morphology operates directly on byte
-buffers and reuses its intermediate buffer without float64 conversions.
+Gaussian, Sobel, grayscale dilation, binary opening, boundary detection, and
+four-connected flood segment writes use SIMD interiors with scalar border and
+remainder handling. Gaussian, median, and affine-warp row ranges use a persistent
+worker pool above 262,144 pixels; smaller inputs stay serial. Median retains only
+the lower half needed for selection instead of fully sorting every footprint.
+Four-connected flood uses scanline spans and writes directly into the returned
+Boolean buffer. Binary morphology operates directly on byte buffers and reuses
+its intermediate buffer without float64 conversions.
 
-No GPU path is provided or benchmarked.
+No GPU path is provided or benchmarked. The covered targets are stencils,
+gather-heavy interpolation, selection, and graph traversal; their arithmetic
+intensity remains below roughly 2 operations per byte of working-set traffic, so
+device transfers would not be justified.
 
 ## How it works
 

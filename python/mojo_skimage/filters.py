@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from ._lib import addr, f64, f64_exact, lib
+from ._lib import addr, f64, f64_exact, lib, parallel_rows
 from ._shared import (
     float_output_dtype,
     footprint_2d,
@@ -58,9 +58,12 @@ def gaussian(
     for axis, sigma_value in enumerate(_sigma_pair(sigma)):
         kernel = _gaussian_kernel(sigma_value, float(truncate))
         target = tmp if axis == 0 else result
-        lib().msi_convolve_axis(
-            addr(source), addr(target), addr(kernel), *source.shape,
-            kernel.size, axis, code, float(cval),
+        parallel_rows(
+            *source.shape,
+            lambda y0, y1, _task: lib().msi_convolve_axis(
+                addr(source), addr(target), addr(kernel), *source.shape,
+                kernel.size, axis, code, float(cval), y0, y1,
+            ),
         )
         source, tmp = target, source
     result = source.astype(float_output_dtype(original.dtype), copy=False)
@@ -147,10 +150,15 @@ def median(
         np.ones((3, 3), dtype=np.uint8) if footprint is None else footprint
     )
     result = np.empty_like(source)
-    scratch = np.empty(int(footprint_array.sum()), dtype=np.float64)
-    lib().msi_median(
-        addr(source), addr(result), addr(footprint_array), addr(scratch),
-        *source.shape, *footprint_array.shape, scratch.size, mode_code(mode), float(cval),
+    count = int(footprint_array.sum())
+    scratch = np.empty((min(source.shape[0], 16), count), dtype=np.float64)
+    parallel_rows(
+        *source.shape,
+        lambda y0, y1, task: lib().msi_median(
+            addr(source), addr(result), addr(footprint_array), addr(scratch[task]),
+            *source.shape, *footprint_array.shape, count, mode_code(mode),
+            float(cval), y0, y1,
+        ),
     )
     result = result.astype(original.dtype, copy=False)
     if out is not None:

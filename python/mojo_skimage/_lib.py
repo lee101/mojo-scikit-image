@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import subprocess
@@ -17,14 +18,14 @@ I = ctypes.c_int64
 F = ctypes.c_double
 
 _SIGNATURES = {
-    "msi_convolve_axis": ([I, I, I, I, I, I, I, I, F], None),
+    "msi_convolve_axis": ([I, I, I, I, I, I, I, I, F, I, I], None),
     "msi_sobel": ([I, I, I, I, I, I, F], None),
     "msi_sobel_magnitude": ([I, I, I, I, I, F], None),
-    "msi_median": ([I, I, I, I, I, I, I, I, I, I, F], None),
+    "msi_median": ([I, I, I, I, I, I, I, I, I, I, F, I, I], None),
     "msi_morph": ([I, I, I, I, I, I, I, I, I, F], None),
     "msi_morph_u8": ([I, I, I, I, I, I, I, I, I, I], None),
     "msi_resize": ([I, I, I, I, I, I, I, I, F], None),
-    "msi_warp_affine": ([I, I, I, I, I, I, I, I, I, F], None),
+    "msi_warp_affine": ([I, I, I, I, I, I, I, I, I, F, I, I], None),
     "msi_otsu": ([I, I, I], F),
     "msi_flood": ([I, I, I, I, I, I, I, I, I, I, F], I),
     "msi_find_boundaries": ([I, I, I, I, I, I, I], None),
@@ -66,6 +67,9 @@ def build(force: bool = False) -> str:
 
 
 _LIBRARY = None
+_MAX_WORKERS = min(os.cpu_count() or 1, 16)
+_EXECUTOR = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
+_PARALLEL_PIXELS = 262_144
 
 
 def lib() -> ctypes.CDLL:
@@ -81,6 +85,18 @@ def lib() -> ctypes.CDLL:
 
 def addr(array: np.ndarray) -> int:
     return array.ctypes.data
+
+
+def parallel_rows(height: int, width: int, function) -> None:
+    if height * width < _PARALLEL_PIXELS or height == 1:
+        function(0, height, 0)
+        return
+    workers = min(height, _MAX_WORKERS)
+    ranges = [
+        (task * height // workers, (task + 1) * height // workers, task)
+        for task in range(workers)
+    ]
+    list(_EXECUTOR.map(lambda bounds: function(*bounds), ranges))
 
 
 def f64(array) -> np.ndarray:

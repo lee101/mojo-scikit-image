@@ -43,6 +43,17 @@ def test_flood_custom_footprint():
     )
 
 
+def test_flood_four_connected_scanline_with_holes():
+    image = np.ones((65, 67), dtype=np.float64)
+    image[8:57, 9:58] = 2.0
+    image[20:45, 22:47] = 1.0
+    image[31, 22:47] = 2.0
+    assert_array_equal(
+        segmentation.flood(image, (10, 10), connectivity=1),
+        reference.flood(image, (10, 10), connectivity=1),
+    )
+
+
 def test_flood_fill_in_place():
     image = _regions()
     expected = image.copy()

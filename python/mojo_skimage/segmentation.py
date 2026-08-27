@@ -36,7 +36,7 @@ def flood(image, seed_point, *, footprint=None, connectivity=None, tolerance=Non
         else _connectivity_footprint(connectivity)
     )
     source = f64(array)
-    result = np.zeros(source.shape, dtype=np.uint8)
+    result = np.zeros(source.shape, dtype=bool)
     stack = np.empty(source.size, dtype=np.int64)
     tol = 0.0 if tolerance is None else float(tolerance)
     if tol < 0:
@@ -45,7 +45,7 @@ def flood(image, seed_point, *, footprint=None, connectivity=None, tolerance=Non
         addr(source), addr(result), addr(stack), addr(fp_array), *source.shape,
         sy, sx, *fp_array.shape, tol,
     )
-    return result.astype(bool)
+    return result
 
 
 def flood_fill(
