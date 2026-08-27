@@ -1,6 +1,5 @@
 """Compute kernels for the covered two-dimensional scikit-image API."""
 
-from std.algorithm import sync_parallelize
 from std.math import abs, floor, sqrt
 from std.sys import simd_width_of
 
@@ -136,7 +135,8 @@ def msi_convolve_axis(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 def sobel_value(
@@ -241,7 +241,8 @@ def msi_sobel(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 @export("msi_sobel_magnitude")
@@ -321,7 +322,8 @@ def msi_sobel_magnitude(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 @export("msi_median")
@@ -453,7 +455,8 @@ def msi_morph(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 @export("msi_morph_u8")
@@ -549,7 +552,8 @@ def msi_morph_u8(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 def interpolate(
@@ -849,7 +853,8 @@ def msi_find_boundaries(
             for y in range(start, end):
                 row(y)
 
-        sync_parallelize[rows](tasks)
+        for task in range(tasks):
+            rows(task)
 
 
 @export("msi_remove_small")
